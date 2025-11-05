@@ -15,8 +15,8 @@ from openai import AsyncOpenAI, APIError
 from establishments.models import Establishment
 from promotions.models import Promotion, Media
 
+#OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-
 AI_MODEL_NAME = "mistralai/mistral-7b-instruct:free"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -213,7 +213,7 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.today = datetime.now()
         self.end_date = datetime.combine(self.today, time.max)
-        self.start_date = self.end_date - timedelta(days=7)
+        self.start_date = self.end_date - timedelta(days=30)
         account_id = kwargs.get('account_id')
         asyncio.run(self.async_handle(account_id))
         
