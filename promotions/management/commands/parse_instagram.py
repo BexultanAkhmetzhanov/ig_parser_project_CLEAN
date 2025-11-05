@@ -18,7 +18,7 @@ from promotions.models import Promotion, Media
 
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 #OPENROUTER_API_KEY = os.environ.get('')
-AI_MODEL_NAME = "minimax/minimax-m2:free"
+AI_MODEL_NAME = "mistralai/mistral-nemo"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
 def parse_date(date_string):
@@ -136,7 +136,7 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
                       f"Ответь только 'да' или 'нет'.")
             completion = await ai_client.chat.completions.create(
                 model=AI_MODEL_NAME, messages=[{"role": "user", "content": prompt}],
-                max_tokens=10, 
+                max_tokens=50, 
                 temperature=0.1
             )
             print(f"    DEBUG AI Response Object: {completion}")
