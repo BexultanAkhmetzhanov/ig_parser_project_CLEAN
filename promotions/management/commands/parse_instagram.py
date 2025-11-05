@@ -15,8 +15,8 @@ from openai import AsyncOpenAI, APIError
 from establishments.models import Establishment
 from promotions.models import Promotion, Media
 
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
-OPENROUTER_API_KEY = "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"
 AI_MODEL_NAME = "mistralai/mistral-7b-instruct:free"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
