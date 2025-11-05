@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright, TimeoutError
 from asgiref.sync import sync_to_async
 from openai import AsyncOpenAI, APIError 
 
+
 from establishments.models import Establishment
 from promotions.models import Promotion, Media
 
@@ -79,7 +80,7 @@ def fetch_profile_data_sync(username, relative_path_base):
         # (Нам не нужна async-версия, т.к. мы уже внутри @sync_to_async)
         default_storage.save(description_path_in_bucket, file_content)
         
-        print(f"Файл 'Описание.txt' успешно сохранен в Cloudflare R2.")
+        print(f"Файл 'Описание.txt' успешно сохранен в хранилище.")
         
     except requests.exceptions.RequestException as e:
         print(f"Не удалось получить данные с Instagram напрямую: {e}")
@@ -194,7 +195,7 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
                     file_path=relative_path, 
                     file_type='video' if is_video else 'image'
                 )
-                print(f"      - Медиафайл ({folder_name}) сохранен в Cloudflare R2.")
+                print(f"      - Медиафайл ({folder_name}) успешно сохранен.")
                 
             except requests.exceptions.RequestException as e:
                 print(f"      ! Не смог скачать файл: {e}")
