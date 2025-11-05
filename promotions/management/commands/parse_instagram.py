@@ -15,8 +15,8 @@ from openai import AsyncOpenAI, APIError
 from establishments.models import Establishment
 from promotions.models import Promotion, Media
 
-#OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+#OPENROUTER_API_KEY = os.environ.get('')
 AI_MODEL_NAME = "mistralai/mistral-7b-instruct:free"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -114,6 +114,7 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
     print(f"Всего найдено {len(all_items)}. Начинаю фильтрацию по дате ({start_date.strftime('%d.%m')} - {end_date.strftime('%d.%m')}) и анализ ИИ ({AI_MODEL_NAME}).")
     promotions_found_counter = 0
     for i, item in enumerate(all_items):
+        await asyncio.sleep(1.5)
         date_element = item.locator("p.media-content__meta-time")
         if await date_element.count() == 0: continue
         date_title = await date_element.get_attribute('title')
