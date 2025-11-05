@@ -124,6 +124,7 @@ DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://promotionseverywhere.netlify.app/",
+    "http://localhost:5173",
 ]
 # --- КОНЕЦ CORS ---
 
