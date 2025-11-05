@@ -18,7 +18,7 @@ from promotions.models import Promotion, Media
 
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 #OPENROUTER_API_KEY = os.environ.get('')
-AI_MODEL_NAME = "mistralai/mistral-7b-instruct:free"
+AI_MODEL_NAME = "minimax/minimax-m2:free"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
 def parse_date(date_string):
