@@ -24,7 +24,7 @@ FLY_HOSTNAME = "ig-parser-project.fly.dev"
 if FLY_HOSTNAME:
     ALLOWED_HOSTS.append(FLY_HOSTNAME)
 
-NETLIFY_HOSTNAME = "promo-finder.netlify.app"
+NETLIFY_HOSTNAME = "promotionseverywhere.netlify.app"
 if NETLIFY_HOSTNAME:
     ALLOWED_HOSTS.append(NETLIFY_HOSTNAME)
 

@@ -16,3 +16,24 @@ class CategoryAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['id', 'name', 'subcategories']
+
+class SubcategoryPublicSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для публичной информации о ПОДкатегории (только ID и имя).
+    """
+    class Meta:
+        model = Subcategory
+        fields = ['id', 'name']
+
+class CategoryPublicSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для публичной Категории с вложенным списком 
+    её публичных подкатегорий.
+    """
+    # Используем новый 'SubcategoryPublicSerializer'
+    subcategories = SubcategoryPublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Category
+        # Отдаем 'id', 'name' и вложенный список 'subcategories'
+        fields = ['id', 'name', 'subcategories']
