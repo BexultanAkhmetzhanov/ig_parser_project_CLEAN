@@ -66,6 +66,11 @@ class PromotionUpdateSerializer(serializers.ModelSerializer):
     edited_text = serializers.CharField(required=False, allow_blank=True)
     conditions = serializers.CharField(required=False, allow_blank=True)
     status = serializers.CharField(required=True)
+
+    establishment = serializers.PrimaryKeyRelatedField(
+        queryset=Establishment.objects.all(), 
+        required=False 
+    )
     
     class Meta:
         model = Promotion
@@ -74,4 +79,5 @@ class PromotionUpdateSerializer(serializers.ModelSerializer):
             'edited_text',
             'conditions',
             'status',
+            'establishment',
         ]

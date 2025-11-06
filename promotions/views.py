@@ -27,7 +27,23 @@ class PromotionListView(generics.ListAPIView):
             queryset = queryset.filter(establishment__city_id=city_id)
         
         return queryset
+class PublishedListView(generics.ListAPIView):
+    """
+    API-представление для получения списка акций,
+    которые уже ОПУБЛИКОВАНЫ. Доступно только администраторам.
+    """
+    serializer_class = PromotionSerializer
+    permission_classes = [permissions.IsAdminUser]
 
+    def get_queryset(self):
+        """Отдает только акции со статусом 'published'."""
+        # Мы также можем добавить фильтрацию по городу, как в PromotionListView
+        queryset = Promotion.objects.filter(status='published').order_by('-published_at')
+        city_id = self.request.query_params.get('city')
+        if city_id is not None:
+            queryset = queryset.filter(establishment__city_id=city_id)
+        
+        return queryset
 class ModerationListView(generics.ListAPIView):
     """
     API-представление для получения списка акций,
@@ -39,6 +55,7 @@ class ModerationListView(generics.ListAPIView):
     def get_queryset(self):
         """Отдает только акции со статусом 'moderation'."""
         return Promotion.objects.filter(status='moderation').order_by('-created_at')
+
 
 class ModerationDetailView(generics.RetrieveUpdateAPIView):
     """

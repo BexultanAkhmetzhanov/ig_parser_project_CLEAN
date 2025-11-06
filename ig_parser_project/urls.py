@@ -34,8 +34,8 @@ public_router = DefaultRouter()
 #public_router.register(r'categories', CategoryPublicViewSet, basename='public-categories')
 
 urlpatterns = [
-    path('', RedirectView.as_view(url='https://promotionseverywhere.netlify.app/', permanent=False)), 
-    #path('', RedirectView.as_view(url='http://127.0.0.1:8000/', permanent=False)), 
+    #path('', RedirectView.as_view(url='https://promotionseverywhere.netlify.app/', permanent=False)), 
+    path('', RedirectView.as_view(url='http://127.0.0.1:8000/', permanent=False)), 
     path('admin/', custom_admin_site.urls),
     
     # --- Публичные API ---
