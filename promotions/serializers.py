@@ -81,3 +81,23 @@ class PromotionUpdateSerializer(serializers.ModelSerializer):
             'status',
             'establishment',
         ]
+### --- НОВЫЙ КОД --- ###
+class AdminPromotionCreateSerializer(serializers.Serializer):
+    """
+    Сериализатор для валидации данных при ручном создании акции админом.
+    Не привязан к модели, так как обработка файлов происходит во View.
+    """
+    establishment = serializers.PrimaryKeyRelatedField(
+        queryset=Establishment.objects.all(),
+        required=True,
+        help_text="ID заведения, к которому привязана акция"
+    )
+    edited_text = serializers.CharField(
+        required=True,
+        help_text="Отредактированный текст акции"
+    )
+    conditions = serializers.CharField(
+        required=False, 
+        allow_blank=True,
+        help_text="Условия и дни проведения"
+    )

@@ -1,13 +1,18 @@
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
-from .models import Promotion
-from .serializers import PromotionSerializer, PromotionUpdateSerializer
+from .models import Promotion, Media
+from .serializers import PromotionSerializer, PromotionUpdateSerializer, AdminPromotionCreateSerializer
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.core.management import call_command
 from django.utils import timezone
 import threading
+
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.core.files.storage import default_storage
+from establishments.models import Establishment
+import datetime
 
 class PromotionListView(generics.ListAPIView):
     """
@@ -121,6 +126,107 @@ class ModerationDetailView(generics.RetrieveUpdateAPIView):
             print(f"Установлена дата публикации: {serializer.instance.published_at}")
         
         print(f"=== КОНЕЦ ОБНОВЛЕНИЯ ===\n")
+
+
+class PromotionCreateView(APIView):
+    """
+    API-представление для ручного создания акции админом.
+    Требует права админа и принимает multipart/form-data.
+    """
+    permission_classes = [permissions.IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        """
+        Обрабатывает POST-запрос для создания новой акции.
+        """
+        print(f"=== ПОЛУЧЕН ЗАПРОС НА СОЗДАНИЕ АКЦИИ ===")
+        print(f"Данные: {request.data}")
+        print(f"Файлы: {request.FILES}")
+
+        # 1. Валидируем текстовые данные
+        serializer = AdminPromotionCreateSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            print("✅ Валидация текстовых полей прошла успешно.")
+        except ValidationError as e:
+            print(f"❌ Ошибка валидации: {e.detail}")
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        validated_data = serializer.validated_data
+        establishment = validated_data['establishment']
+        
+        try:
+            # 2. Создаем саму акцию
+            new_promo = Promotion.objects.create(
+                establishment=establishment,
+                edited_text=validated_data['edited_text'],
+                conditions=validated_data.get('conditions', ''),
+                raw_text="Добавлено вручную администратором", # Заглушка
+                status=Promotion.STATUS_PUBLISHED, # Сразу публикуем
+                published_at=timezone.now() # Устанавливаем дату публикации
+            )
+            print(f"✅ Акция #{new_promo.id} создана в базе данных.")
+
+            # 3. Обрабатываем и сохраняем медиафайлы
+            uploaded_files = request.FILES.getlist('media')
+            if not uploaded_files:
+                # Если файлов нет, это не ошибка, просто возвращаем созданную акцию
+                print("⚠️ Медиафайлы не были предоставлены.")
+                # Сериализуем созданный объект для ответа
+                result_serializer = PromotionSerializer(new_promo)
+                return Response(result_serializer.data, status=status.HTTP_201_CREATED)
+            
+            print(f"Начинаю обработку {len(uploaded_files)} медиафайлов...")
+
+            # Создаем путь для сохранения, похожий на тот, что в парсере
+            today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+            username_safe = establishment.instagram_url.strip('/').split('/')[-1]
+            base_folder_path = (
+                f"{establishment.city.country.name}/{establishment.city.name}/"
+                f"{username_safe}/{today_str}/Manually_Added"
+            )
+
+            for file in uploaded_files:
+                file_type_string = 'video' if 'video' in file.content_type else 'image'
+                
+                # Генерируем уникальное имя файла для хранилища
+                # (Включаем ID акции, чтобы избежать конфликтов)
+                file_save_path = f"{base_folder_path}/promo_{new_promo.id}_{file.name}"
+                
+                # 4. Сохраняем файл в облачное хранилище (S3/R2 и т.д.)
+                try:
+                    saved_path = default_storage.save(file_save_path, file)
+                    print(f"  ...Файл '{file.name}' сохранен в хранилище по пути: {saved_path}")
+
+                    # 5. Создаем запись Media в базе данных
+                    Media.objects.create(
+                        promotion=new_promo,
+                        file_path=saved_path, # Используем путь, который вернуло хранилище
+                        file_type=file_type_string
+                    )
+                except Exception as e:
+                    # Если один из файлов не сохранился, это проблема.
+                    # Мы удалим уже созданную акцию, чтобы не было "мусора".
+                    new_promo.delete()
+                    print(f"❌ Ошибка при сохранении файла '{file.name}': {e}")
+                    return Response(
+                        {"error": f"Ошибка при сохранении файла: {e}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+            print(f"✅ Все {len(uploaded_files)} файлов успешно сохранены и привязаны к акции.")
+            
+            # 6. Возвращаем созданную акцию со всеми медиа
+            result_serializer = PromotionSerializer(new_promo)
+            return Response(result_serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            print(f"❌ Непредвиденная ошибка при создании акции: {e}")
+            return Response(
+                {"error": f"Внутренняя ошибка сервера: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class TriggerParseView(APIView):
     """

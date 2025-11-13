@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import PromotionListView, ModerationListView, ModerationDetailView, TriggerParseView, PublishedListView
+from .views import PromotionListView, ModerationListView, ModerationDetailView, TriggerParseView, PublishedListView, PromotionCreateView
 
 urlpatterns = [
     path('promotions/', PromotionListView.as_view(), name='promotion-list'),    
@@ -9,4 +9,6 @@ urlpatterns = [
     
     path('moderation-promo/<int:pk>/', ModerationDetailView.as_view(), name='moderation-detail'),
     path('trigger-parse/', TriggerParseView.as_view(), name='trigger-parse'),
+
+    path('admin/promotions/create/', PromotionCreateView.as_view(), name='admin-promotion-create'),
 ]

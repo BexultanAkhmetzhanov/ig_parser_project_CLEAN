@@ -6,8 +6,8 @@ from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.core.files.storage import default_storage # <-- Импорт
-from django.core.files.base import ContentFile      # <-- Импорт
+from django.core.files.storage import default_storage 
+from django.core.files.base import ContentFile      
 from playwright.async_api import async_playwright, TimeoutError
 from asgiref.sync import sync_to_async
 from openai import AsyncOpenAI, APIError 
@@ -17,7 +17,6 @@ from establishments.models import Establishment
 from promotions.models import Promotion, Media
 
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-#OPENROUTER_API_KEY = os.environ.get('')
 AI_MODEL_NAME = "mistralai/mistral-nemo"
 ai_client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -30,15 +29,8 @@ def parse_date(date_string):
         except ValueError: continue
     return None
 
-# =======================================================
-# ==     ✅ ИСПРАВЛЕНА ЛОГИКА ДЛЯ Описания.txt         ==
-# =======================================================
 @sync_to_async
 def fetch_profile_data_sync(username, relative_path_base):
-    """
-    Получает данные профиля и сохраняет 'Описание.txt' напрямую в Cloudflare R2.
-    relative_path_base - это путь в бакете (БЕЗ имени файла).
-    """
     profile_url = f"https://www.instagram.com/{username}/"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     data = {"Username": username, "FullName": "Не найдено", "Biography": "Не найдено", "Followers": "Не найдено", "PostsCount": "Не найдено"}
@@ -62,24 +54,14 @@ def fetch_profile_data_sync(username, relative_path_base):
         if meta_desc and meta_desc.get('content'):
              data["Biography"] = meta_desc['content'].split('-')[0].strip()
         
-        # --- Новая логика сохранения в R2 ---
-        
-        # 1. Формируем контент файла
         file_data_string = (
             f"Имя пользователя: {data['Username']}\nПолное имя: {data['FullName']}\n"
             f"Подписчики: {data['Followers']}\nКол-во постов: {data['PostsCount']}\n\nОписание профиля:\n{data['Biography']}\n"
         )
         
-        # 2. Формируем ПОЛНЫЙ путь в бакете (с именем файла)
         description_path_in_bucket = f"{relative_path_base}/Описание.txt"
-        
-        # 3. Создаем файл в памяти
         file_content = ContentFile(file_data_string.encode('utf-8'))
-        
-        # 4. Сохраняем в R2
-        # (Нам не нужна async-версия, т.к. мы уже внутри @sync_to_async)
         default_storage.save(description_path_in_bucket, file_content)
-        
         print(f"Файл 'Описание.txt' успешно сохранен в хранилище.")
         
     except requests.exceptions.RequestException as e:
@@ -87,9 +69,6 @@ def fetch_profile_data_sync(username, relative_path_base):
     except Exception as e:
         print(f"Ошибка при сохранении 'Описание.txt' в R2: {e}")
 
-# =======================================================
-# ==       КОНЕЦ ИСПРАВЛЕНИЯ 'Описание.txt'            ==
-# =======================================================
 
 async def find_and_save_promotions(page, content_type, date_range, establishment, base_folder_path):
     print(f"\nНачинаю работать с разделом: {content_type.upper()}")
@@ -131,15 +110,16 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
         print(f"    ? Анализирую текст с помощью ИИ: '{post_text[:70].strip()}...'")
         is_promotion = False
         try:
+            # ОБНОВЛЕННЫЙ ПРОМПТ С НОВЫМИ КЛЮЧЕВЫМИ СЛОВАМИ
             prompt = (f"Текст из Instagram: {post_text}\n\n"
-                      f"Вопрос: Этот текст описывает акцию, скидку, распродажу, розыгрыш или спецпредложение? "
+                      f"Вопрос:Этот текст описывает акцию, скидку, распродажу, **ликвидацию**, **черную пятницу** (black friday) или спецпредложение?"
                       f"Ответь только 'да' или 'нет'.")
             completion = await ai_client.chat.completions.create(
                 model=AI_MODEL_NAME, messages=[{"role": "user", "content": prompt}],
                 max_tokens=50, 
                 temperature=0.1
             )
-            print(f"    DEBUG AI Response Object: {completion}")
+            # print(f"    DEBUG AI Response Object: {completion}")
             ai_response = completion.choices[0].message.content.strip().lower() if completion.choices else ""
             print(f"    > Ответ ИИ: '{ai_response}'")
             if 'да' in ai_response: is_promotion = True
@@ -159,9 +139,6 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
         new_promo = await create_promo_task(establishment=establishment, raw_text=post_text, status='moderation')
         promotions_found_counter += 1
         
-        # =======================================================
-        # ==         ✅ БЛОК СОХРАНЕНИЯ МЕДИА в R2           ==
-        # =======================================================
         
         download_url = await button.get_attribute('href')
         if download_url:
@@ -176,19 +153,11 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
                 folder_name = 'Stories' if content_type == 'stories' else 'Posts'
                 file_name = f"promo_{new_promo.id}_{i+1}{default_ext}"
 
-                # 1. Собираем путь с '/', используя тот же base_folder_path
                 relative_path = f"{base_folder_path}/{folder_name}/{file_name}"
-
-                # 2. Создаем объект файла в памяти
                 file_content = ContentFile(response.content)
-
-                # 3. Оборачиваем .save() в async
                 storage_save = sync_to_async(default_storage.save, thread_sensitive=True)
-
-                # 4. Сохраняем файл напрямую в Cloudflare R2
                 await storage_save(relative_path, file_content)
 
-                # 5. Создаем запись в БД
                 create_media_task = sync_to_async(Media.objects.create, thread_sensitive=True)
                 await create_media_task(
                     promotion=new_promo,
@@ -202,11 +171,181 @@ async def find_and_save_promotions(page, content_type, date_range, establishment
             except Exception as e:
                 print(f"      ! Ошибка при сохранении в R2: {e}") 
                 
-        # =======================================================
-        # ==              КОНЕЦ БЛОКА СОХРАНЕНИЯ             ==
-        # =======================================================
-        
     return promotions_found_counter
+
+
+async def find_and_save_highlights(page, establishment, base_folder_path, date_range):
+    """
+    Находит "Актуальное" (Highlights), анализирует их названия.
+    Если ИИ одобряет название, проверяет ДАТЫ сторис внутри.
+    Если дата подходит -> скачивает и создает акцию.
+    """
+    print(f"\nНачинаю работать с разделом: HIGHLIGHTS")
+    start_date, end_date = date_range
+    
+    # 1. Переходим на вкладку
+    try:
+        await page.locator('button:has-text("highlights")').click()
+        await page.wait_for_timeout(5000)
+    except Exception as e:
+        print(f"  ! Не удалось найти или нажать на вкладку 'Highlights': {e}")
+        return 0
+
+    highlight_selector = "li.highlight.highlights-component__highlight"
+    count = await page.locator(highlight_selector).count()
+
+    if count == 0:
+        print("  - 'Актуальное' (Highlights) не найдено на странице.")
+        return 0
+
+    print(f"  Всего найдено {count} 'Актуальных'.")
+    promotions_found_counter = 0
+
+    # 2. Проходим по каждому хайлайту
+    for i in range(count):
+        try:
+            # Перестраховка: убеждаемся, что мы на вкладке Highlights
+            if await page.locator(highlight_selector).count() == 0:
+                 await page.locator('button:has-text("highlights")').click()
+                 await page.wait_for_timeout(2000)
+
+            # Переполучаем список (на случай если DOM обновился)
+            all_highlights = await page.locator(highlight_selector).all()
+            if i >= len(all_highlights): break
+            highlight = all_highlights[i]
+
+            # --- АНАЛИЗ НАЗВАНИЯ ---
+            title_element = highlight.locator("p.highlight__title")
+            if await title_element.count() == 0: continue
+            
+            highlight_title = await title_element.inner_text()
+            highlight_title = highlight_title.strip()
+            if not highlight_title: continue
+
+            print(f"    [{i+1}/{count}] Анализирую название '{highlight_title}'...")
+
+            is_promotion = False
+            try:
+                prompt = (f"Название 'Актуального' (Highlights) в Instagram: {highlight_title}\n\n"
+                          f"Вопрос: Судя по этому названию (например, 'Акции', 'Sale', 'Скидки', 'Offers'), в этом разделе могут содержаться акции, скидки, распродажи, ликвидации или спецпредложения? "
+                          f"Ответь только 'да' или 'нет'.")
+                
+                completion = await ai_client.chat.completions.create(
+                    model=AI_MODEL_NAME, messages=[{"role": "user", "content": prompt}],
+                    max_tokens=50, 
+                    temperature=0.1
+                )
+                ai_response = completion.choices[0].message.content.strip().lower() if completion.choices else ""
+                if 'да' in ai_response: 
+                    is_promotion = True
+            except Exception:
+                pass 
+
+            if not is_promotion:
+                print(f"      - ИИ: Нет.")
+                continue
+
+            print(f"      + ИИ: ДА! Открываю хайлайт...")
+
+            # --- ОТКРЫТИЕ ХАЙЛАЙТА (Подгрузка контента) ---
+            # Клик по кнопке внутри li вызывает подгрузку контента ниже
+            await highlight.locator("button.highlight__button").click()
+            await page.wait_for_timeout(6000) # Ждем загрузки контента
+
+            # Ищем подгруженные элементы (они такие же, как в Posts/Stories)
+            media_items_selector = "li.profile-media-list__item"
+            media_items = await page.locator(media_items_selector).all()
+            
+            if not media_items:
+                print("      ! Контент не загрузился или пуст.")
+                # Скроллим вверх на всякий случай
+                await page.evaluate("window.scrollTo(0, 0)")
+                continue
+
+            # --- ПРОВЕРКА ДАТЫ И СБОР ФАЙЛОВ ---
+            valid_media_to_save = [] # Список кортежей (media_item_locator, media_index)
+
+            print(f"      Найдено {len(media_items)} слайдов. Проверяю даты ({start_date.strftime('%d.%m')} - {end_date.strftime('%d.%m')})...")
+
+            for media_index, media_item in enumerate(media_items):
+                date_element = media_item.locator("p.media-content__meta-time")
+                if await date_element.count() == 0: continue
+                
+                date_title = await date_element.get_attribute('title')
+                item_date = parse_date(date_title)
+                
+                if item_date and (start_date <= item_date <= end_date):
+                    # Дата подходит!
+                    valid_media_to_save.append((media_item, media_index))
+                # Если дата НЕ подходит, мы просто пропускаем этот слайд.
+                # Мы НЕ прерываем цикл (break), потому что в Хайлайте старые и новые сторис могут быть перемешаны
+                # (хотя обычно они по порядку, но лучше перестраховаться).
+
+            if not valid_media_to_save:
+                print(f"      - В этом хайлайте нет свежих акций (все старые). Пропускаю.")
+                # Возвращаемся наверх
+                await page.evaluate("window.scrollTo(0, 0)")
+                continue
+
+            # --- СОЗДАНИЕ АКЦИИ И СКАЧИВАНИЕ ---
+            print(f"      + Найдено {len(valid_media_to_save)} свежих слайдов! Создаю акцию...")
+            
+            create_promo_task = sync_to_async(Promotion.objects.create, thread_sensitive=True)
+            new_promo = await create_promo_task(
+                establishment=establishment, 
+                raw_text=f"Акция из 'Актуального'. Название: {highlight_title}", 
+                status='moderation'
+            )
+            promotions_found_counter += 1
+
+            # Скачиваем только валидные файлы
+            for media_item, original_index in valid_media_to_save:
+                button = media_item.locator("a.button__download")
+                if await button.count() == 0: continue
+
+                download_url = await button.get_attribute('href')
+                if download_url:
+                    download_task = sync_to_async(requests.get, thread_sensitive=True)
+                    try:
+                        if download_url.startswith('/get'): download_url = f"https://media.storiesig.info{download_url}"
+                        response = await download_task(download_url)
+                        response.raise_for_status() 
+                        
+                        is_video = await media_item.locator(".tags__item--video").count() > 0
+                        default_ext = ".mp4" if is_video else ".jpg"
+                        
+                        safe_title = "".join(c for c in highlight_title if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
+                        if not safe_title: safe_title = f"highlight_{new_promo.id}"
+                        
+                        # Сохраняем структуру: Highlights / Название Хайлайта / Файл
+                        relative_path = f"{base_folder_path}/Highlights/{safe_title}/promo_{new_promo.id}_{original_index+1}{default_ext}"
+
+                        file_content = ContentFile(response.content)
+                        storage_save = sync_to_async(default_storage.save, thread_sensitive=True)
+                        await storage_save(relative_path, file_content)
+
+                        create_media_task = sync_to_async(Media.objects.create, thread_sensitive=True)
+                        await create_media_task(
+                            promotion=new_promo,
+                            file_path=relative_path, 
+                            file_type='video' if is_video else 'image'
+                        )
+                        print(f"        - Слайд {original_index+1} сохранен.")
+                    except Exception as e:
+                        print(f"        ! Ошибка сохранения слайда {original_index+1}: {e}")
+
+            # После обработки хайлайта, обязательно скроллим вверх, 
+            # чтобы меню с кружками снова стало видно и Playwright мог кликнуть следующий.
+            await page.evaluate("window.scrollTo(0, 0)")
+            await page.wait_for_timeout(1000)
+
+        except Exception as e:
+            print(f"    ! Ошибка на хайлайте #{i}: {e}")
+            await page.evaluate("window.scrollTo(0, 0)") # На всякий случай скроллим вверх
+            continue
+            
+    return promotions_found_counter
+
 
 class Command(BaseCommand):
     help = 'Запускает парсинг аккаунтов Instagram для сбора акций за последние 7 дней'
@@ -240,24 +379,12 @@ class Command(BaseCommand):
                     username = establishment.instagram_url.strip('/').split('/')[-1]
                     self.stdout.write(self.style.MIGRATE_HEADING(f"\n--- Работаю с профилем: {username} ---"))
                     
-                    # =======================================================
-                    # ==           ✅ ИСПРАВЛЕНА ЛОГИКА ПУТИ             ==
-                    # =======================================================
-                    
-                    # 1. Создаем ОБЩИЙ ПУТЬ В БАКЕТЕ (БЕЗ MEDIA_ROOT)
                     base_folder_path = (
                         f"{establishment.city.country.name}/{establishment.city.name}/"
                         f"{username}/{self.today.strftime('%Y-%m-%d')}"
                     )
                     
-                    # 2. УДАЛЕНА КОМАНДА os.makedirs, она больше не нужна
-                    
-                    # 3. Передаем этот путь в обе функции
                     await fetch_profile_data_sync(username, base_folder_path)
-                    
-                    # =======================================================
-                    # ==           КОНЕЦ ИСПРАВЛЕНИЯ ПУТИ              ==
-                    # =======================================================
                     
                     self.stdout.write("Шаг 2: Ищу профиль на StoriesIG...")
                     await page.locator("input.search.search-form__input").fill(username)
@@ -276,11 +403,14 @@ class Command(BaseCommand):
                         await page.goto("https://storiesig.info/en/")
                         continue
                         
-                    # 4. Передаем этот же путь в функцию поиска медиа
                     posts_promo_count = await find_and_save_promotions(page, 'posts', (self.start_date, self.end_date), establishment, base_folder_path)
                     stories_promo_count = await find_and_save_promotions(page, 'stories', (self.start_date, self.end_date), establishment, base_folder_path)
                     
-                    message = f"Готово для {username}. Найдено акций: {posts_promo_count} (посты), {stories_promo_count} (сторис)."
+                    # Передаем date_range в функцию хайлайтов!
+                    highlights_promo_count = await find_and_save_highlights(page, establishment, base_folder_path, (self.start_date, self.end_date))
+                    
+                    message = f"Готово для {username}. Найдено акций: {posts_promo_count} (посты), {stories_promo_count} (сторис), {highlights_promo_count} (актуальное)."
+
                     self.stdout.write(self.style.SUCCESS(message))
                     await page.goto("https://storiesig.info/en/")
             finally:
